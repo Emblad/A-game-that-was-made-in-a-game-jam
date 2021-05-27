@@ -1,0 +1,157 @@
+https://jut.itch.io/sofishticated
+Link to game download here is some code that i wrote for the game in order to lern more about ik so it followed a tutorial to make it in 3d but this is a 2d version of it that i made by modifing the 3d version
+ublic class InverseIk : MonoBehaviour
+{
+    [SerializeField] int ChainLength = 2;
+    [SerializeField] Transform Target;
+
+
+    [Header("Solver Parameters")]
+    [SerializeField] int Iterations = 10;
+    [SerializeField] float Delta = 0.001f;
+    [Range(0, 1)]
+    [SerializeField] float SnapBackStrength = 1f;
+
+
+    protected float[] BonesLength;
+    protected float CompleteLength;
+    protected Transform[] Bones;
+    protected Vector3[] Positions;
+    protected Vector3[] StartDirectionSucc;
+    protected Quaternion[] StartRotationBone;
+    protected Quaternion StartRotationTarget;
+    protected Transform Root;
+    void Awake()
+    {
+        Init();
+    }
+
+    void Init()
+    {
+        Bones = new Transform[ChainLength + 1];
+        Positions = new Vector3[ChainLength + 1];
+        BonesLength = new float[ChainLength];
+        StartDirectionSucc = new Vector3[ChainLength + 1];
+        StartRotationBone = new Quaternion[ChainLength + 1];
+
+        Root = transform;
+        for (var i = 0; i <= ChainLength; i++)
+        {
+            Root = Root.parent;
+        }
+
+        if (Target == null)
+        {
+            // Get a new target do in update;
+            Target = new GameObject(gameObject.name + " Target").transform;
+            SetPositionRootSpace(Target, GetPositionRootSpace(transform));
+        }
+        StartRotationTarget = GetRotationRootSpace(Target);
+
+
+        var current = transform;
+        CompleteLength = 0;
+        for (var i = Bones.Length - 1; i >= 0; i--)
+        {
+            Bones[i] = current;
+            StartRotationBone[i] = GetRotationRootSpace(current);
+
+            if (i == Bones.Length - 1)
+            {
+                StartDirectionSucc[i] = GetPositionRootSpace(Target) - GetPositionRootSpace(current);
+            }
+            else
+            {
+                StartDirectionSucc[i] = GetPositionRootSpace(Bones[i + 1]) - GetPositionRootSpace(current);
+                BonesLength[i] = StartDirectionSucc[i].magnitude;
+                CompleteLength += BonesLength[i];
+            }
+
+            current = current.parent;
+        }
+
+    }
+
+    void LateUpdate()
+    {
+        ResolveIK();
+    }
+
+    private void ResolveIK()
+    {
+        if (Target == null)
+            return;
+
+        if (BonesLength.Length != ChainLength)
+            Init();
+
+
+        for (int i = 0; i < Bones.Length; i++)
+            Positions[i] = GetPositionRootSpace(Bones[i]);
+
+        var targetPosition = GetPositionRootSpace(Target);
+        var targetRotation = GetRotationRootSpace(Target);
+
+ 
+        for (int i = 0; i < Positions.Length - 1; i++)
+            Positions[i + 1] = Vector2.Lerp(Positions[i + 1], Positions[i] + StartDirectionSucc[i], SnapBackStrength);
+
+        for (int iteration = 0; iteration < Iterations; iteration++)
+        {
+
+            for (int i = Positions.Length - 1; i > 0; i--)
+            {
+                if (i == Positions.Length - 1)
+                    Positions[i] = targetPosition;
+                else
+                    Positions[i] = Positions[i + 1] + (Positions[i] - Positions[i + 1]).normalized * BonesLength[i];
+            }
+
+            for (int i = 1; i < Positions.Length; i++)
+                Positions[i] = Positions[i - 1] + (Positions[i] - Positions[i - 1]).normalized * BonesLength[i - 1];
+
+            if ((Positions[Positions.Length - 1] - Positions[0]).sqrMagnitude < Delta * Delta)
+                break;
+        }
+        for (int i = 0; i < Positions.Length; i++)
+        {
+            if (i == Positions.Length - 1)
+                SetRotationRootSpace(Bones[i], Quaternion.Inverse(targetRotation) * StartRotationTarget * Quaternion.Inverse(StartRotationBone[i]));
+            else
+                SetRotationRootSpace(Bones[i], Quaternion.FromToRotation(StartDirectionSucc[i], Positions[i + 1] - Positions[i]) * Quaternion.Inverse(StartRotationBone[i]));
+            SetPositionRootSpace(Bones[i], Positions[i]);
+        }
+    }
+
+    private Vector2 GetPositionRootSpace(Transform current)
+    {
+        if (Root == null)
+            return new Vector3(current.position.x, current.position.y, 0);
+        else
+            return Quaternion.Inverse(Root.rotation) * (current.position - Root.position);
+    }
+
+    private void SetPositionRootSpace(Transform current, Vector2 position)
+    {
+        if (Root == null)
+            current.position = position;
+        else
+            current.position = Root.rotation * position + Root.position;
+    }
+
+    private Quaternion GetRotationRootSpace(Transform current)
+    {
+        if (Root == null)
+            return current.rotation;
+        else
+            return Quaternion.Inverse(current.rotation) * Root.rotation;
+    }
+
+    private void SetRotationRootSpace(Transform current, Quaternion rotation)
+    {
+        if (Root == null)
+            current.rotation = rotation;
+        else
+            current.rotation = Root.rotation * rotation;
+    }
+        }
